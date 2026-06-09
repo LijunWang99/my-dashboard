@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>呼叫中心大运营实时数据看板 V2.0</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @keyframes pulse-red {
+            0% { transform: scale(1); text-shadow: 0 0 0px rgba(239, 68, 68, 0); }
+            50% { transform: scale(1.05); text-shadow: 0 0 15px rgba(239, 68, 68, 0.8); color: #ef4444; }
+            100% { transform: scale(1); text-shadow: 0 0 0px rgba(239, 68, 68, 0); }
+        }
+        .alert-flash { animation: pulse-red 2s infinite; }
+        .glass-card {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover { border-color: rgba(99, 102, 241, 0.5); transform: translateY(-2px); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-[#0B0F19] text-gray-100 font-sans min-h-screen p-6">
+
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-800 pb-6">
+        <div>
+            <div class="flex items-center gap-2 mb-1">
+                <h1 class="text-3xl font-bold tracking-tight text-white">呼叫中心大运营实时数据看板</h1>
+                <span class="bg-indigo-600/20 text-indigo-400 text-[10px] px-2 py-0.5 rounded border border-indigo-500/30">V2.0 PRO</span>
+            </div>
+            <p class="text-sm text-gray-400">基于 AI 调教的业务自动化工具 · 实时 SL 报警监控已开启</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="resetData()" class="text-gray-400 hover:text-white text-xs px-3 py-2 border border-gray-700 rounded-lg transition-all">重置清空</button>
+            <select id="teamFilter" class="bg-[#111827] border border-gray-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                <option value="全部">所有业务线 (LOB 全选)</option>
+                <optgroup label="iOS 业务线">
+                    <option value="iOS T1">iOS T1</option>
+                    <option value="iOS T2">iOS T2</option>
+                </optgroup>
+                <optgroup label="MSS 业务线">
+                    <option value="MSS T1">MSS T1</option>
+                    <option value="MSS T2">MSS T2</option>
+                </optgroup>
+                <optgroup label="Mac 业务线">
+                    <option value="Mac T1">Mac T1</option>
+                    <option value="Mac T2">Mac T2</option>
+                </optgroup>
+            </select>
+            <label class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium text-sm px-4 py-2 rounded-lg cursor-pointer transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                <span>📂 导入生产数据</span>
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden">
+            </label>
+        </div>
+    </header>
+
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="glass-card rounded-xl p-6 relative overflow-hidden">
+            <div class="text-sm text-gray-400 mb-2">总呼入量 (Inbound)</div>
+            <div id="kpiCallIn" class="text-3xl font-bold text-white tracking-tight">--</div>
+            <div class="text-[10px] text-gray-500 mt-2 italic">数据模式: 实时加载中</div>
+        </div>
+        <div class="glass-card rounded-xl p-6">
+            <div class="text-sm text-gray-400 mb-2">综合接听率 (AR)</div>
+            <div class="flex items-baseline gap-2">
+                <div id="kpiAnswerRate" class="text-3xl font-bold tracking-tight text-white">--</div>
+                <div id="arStatus" class="text-[10px] px-1.5 py-0.5 rounded"></div>
+            </div>
+            <div class="w-full bg-gray-800 h-1.5 rounded-full mt-4">
+                <div id="arProgress" class="h-full rounded-full bg-indigo-500 transition-all duration-1000" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="glass-card rounded-xl p-6">
+            <div class="text-sm text-gray-400 mb-2">平均处理时长 (AHT)</div>
+            <div class="flex items-baseline gap-1 text-white">
+                <div id="kpiAHT" class="text-3xl font-bold tracking-tight">--</div>
+                <span class="text-xs font-normal opacity-60">Sec</span>
+            </div>
+            <div class="text-[10px] text-gray-500 mt-4">计算逻辑: 全盘均值统计</div>
+        </div>
+        <div class="glass-card rounded-xl p-6">
+            <div class="text-sm text-gray-400 mb-2">服务水平 (SL 20s)</div>
+            <div id="kpiSL" class="text-3xl font-bold tracking-tight text-white">--</div>
+            <div id="slAlertText" class="text-[10px] mt-2"></div>
+        </div>
+    </section>
+
+    <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div class="glass-card rounded-xl p-6 lg:col-span-1">
+            <h3 class="text-sm font-semibold text-gray-300 mb-6 flex items-center justify-between">
+                LOB 话务份额对比
+                <span class="text-[10px] font-normal text-gray-500 underline">业务线占比</span>
+            </h3>
+            <div class="w-full h-[220px] flex items-center justify-center">
+                <canvas id="lobChart"></canvas>
+            </div>
+            <div id="lobLegend" class="mt-6 space-y-2"></div>
+        </div>
+
+        <div class="glass-card rounded-xl p-6 lg:col-span-2">
+            <h3 class="text-sm font-semibold text-gray-300 mb-6">呼入趋势与服务水平监控 (双轴)</h3>
+            <div class="h-[280px]">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </main>
+
+    <section class="glass-card rounded-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/30">
+            <h3 class="text-sm font-semibold text-gray-300">各客服班组运营效能明细 (大盘拉通)</h3>
+            <span class="text-[10px] text-indigo-400">联动筛选已就绪</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="text-gray-500 border-b border-gray-800">
+                        <th class="px-6 py-3 font-medium">客服班组</th>
+                        <th class="px-6 py-3 font-medium text-center">呼入量</th>
+                        <th class="px-6 py-3 font-medium text-center">接听率</th>
+                        <th class="px-6 py-3 font-medium text-center">SL (20s)</th>
+                        <th class="px-6 py-3 font-medium text-center">AHT (秒)</th>
+                        <th class="px-6 py-3 font-medium text-center text-indigo-400">客户满意度</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody" class="divide-y divide-gray-800/50">
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <script>
+        let rawData = [];
+        let lobChartInst = null, trendChartInst = null;
+
+        // 内置的高逼真标准测试假数据（包含正常达标与需要报警的数据，用于向老板演示）
+        const defaultCSVData = `日期,客服班组,呼入量,人工接听量,服务水平_20s,平均处理时长_秒,客户满意度
+2026-06-08,iOS T1,2800,2400,72.5%,210,85.5%
+2026-06-08,iOS T2,650,630,92.0%,450,91.0%
+2026-06-08,MSS T1,1900,1500,64.8%,290,79.5%
+2026-06-08,MSS T2,420,400,94.5%,520,93.0%
+2026-06-08,Mac T1,1300,1220,81.0%,230,88.0%
+2026-06-08,Mac T2,280,275,95.0%,540,94.5%
+2026-06-09,iOS T1,3100,2550,68.2%,225,82.0%
+2026-06-09,iOS T2,710,690,90.5%,465,89.5%
+2026-06-09,MSS T1,2100,1650,61.0%,310,77.0%
+2026-06-09,MSS T2,460,435,91.0%,550,91.2%
+2026-06-09,Mac T1,1450,1350,78.5%,245,86.0%
+2026-06-09,Mac T2,310,302,93.8%,565,93.1%`;
+
+        function parseCSV(text) {
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            if(lines.length < 2) return [];
+            const headers = lines[0].split(',');
+            return lines.slice(1).map(line => {
+                const values = line.split(',');
+                const obj = {};
+                headers.forEach((h, i) => {
+                    let v = values[i] ? values[i].trim() : '';
+                    if (['呼入量', '人工接听量', '平均处理时长_秒'].includes(h)) v = parseFloat(v) || 0;
+                    obj[h] = v;
+                });
+                return obj;
+            });
+        }
+
+        function renderDashboard(filterTeam = "全部") {
+            let filteredData = (filterTeam === "全部") ? rawData : rawData.filter(d => d['客服班组'] === filterTeam);
+            if(filteredData.length === 0) {
+                clearUIDisplay();
+                return;
+            }
+
+            // 1. KPI 计算
+            const totalCallIn = filteredData.reduce((sum, d) => sum + d['呼入量'], 0);
+            const totalAnswered = filteredData.reduce((sum, d) => sum + d['人工接听量'], 0);
+            const arVal = totalCallIn > 0 ? (totalAnswered / totalCallIn * 100) : 0;
+            const avgAHT = Math.round(filteredData.reduce((sum, d) => sum + d['平均处理时长_秒'], 0) / filteredData.length);
+            const avgSL = filteredData.reduce((sum, d) => sum + (parseFloat(d['服务水平_20s']) || 0), 0) / filteredData.length;
+
+            // UI 数字更新
+            document.getElementById('kpiCallIn').innerText = totalCallIn.toLocaleString();
+            document.getElementById('kpiAHT').innerText = avgAHT;
+            
+            // 接听率报警样式联动
+            const arEl = document.getElementById('kpiAnswerRate');
+            arEl.innerText = arVal.toFixed(1) + '%';
+            document.getElementById('arProgress').style.width = arVal + '%';
+            if(arVal < 85) {
+                document.getElementById('arStatus').innerHTML = '⚠️ 低于阈值';
+                document.getElementById('arStatus').className = 'text-[10px] px-1.5 py-0.5 rounded bg-red-900/40 text-red-400';
+            } else {
+                document.getElementById('arStatus').innerHTML = '✓ 正常';
+                document.getElementById('arStatus').className = 'text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400';
+            }
+
+            // SL 智能预警红灯联动 (核心展示技术点)
+            const slEl = document.getElementById('kpiSL');
+            slEl.innerText = avgSL.toFixed(1) + '%';
+            const slAlertText = document.getElementById('slAlertText');
+            if(avgSL < 75) {  // 综合低于75%或者单线下跌触发闪烁
+                slEl.className = 'text-3xl font-bold tracking-tight alert-flash text-red-500';
+                slAlertText.innerText = '‼️ 触发自动报警：SL 达成率偏低';
+                slAlertText.className = 'text-[10px] mt-2 text-red-500 font-bold';
+            } else {
+                slEl.className = 'text-3xl font-bold tracking-tight text-white';
+                slAlertText.innerText = '标准设定: 70% · 当前运行平稳';
+                slAlertText.className = 'text-[10px] mt-2 text-emerald-500 opacity-80';
+            }
+
+            // 2. 环形图渲染 (始终展示全盘总体份额，便于对比)
+            let lobMap = { 'iOS': 0, 'MSS': 0, 'Mac': 0 };
+            rawData.forEach(d => {
+                const t = d['客服班组'] || '';
+                if(t.includes('iOS')) lobMap['iOS'] += d['呼入量'];
+                else if(t.includes('MSS')) lobMap['MSS'] += d['呼入量'];
+                else if(t.includes('Mac')) lobMap['Mac'] += d['呼入量'];
+            });
+            if(lobChartInst) lobChartInst.destroy();
+            lobChartInst = new Chart(document.getElementById('lobChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['iOS 业务线', 'MSS 多媒体', 'Mac 桌面端'],
+                    datasets: [{ data: [lobMap['iOS'], lobMap['MSS'], lobMap['Mac']], backgroundColor: ['#6366F1', '#A855F7', '#10B981'], borderWidth: 0 }]
+                },
+                options: { plugins: { legend: { display: false } }, cutout: '80%', maintainAspectRatio: false }
+            });
+            const sumL = (lobMap['iOS'] + lobMap['MSS'] + lobMap['Mac']) || 1;
+            document.getElementById('lobLegend').innerHTML = ['iOS', 'MSS', 'Mac'].map((label, i) => `
+                <div class="flex justify-between items-center text-xs">
+                    <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full" style="background:${['#6366F1', '#A855F7', '#10B981'][i]}"></div><span class="text-gray-400">${label} 业务</span></div>
+                    <span class="font-medium">${(lobMap[label]/sumL*100).toFixed(0)}%</span>
+                </div>
+            `).join('');
+
+            // 3. 趋势图双轴渲染
+            const dateMap = {};
+            filteredData.forEach(d => {
+                if(!dateMap[d['日期']]) dateMap[d['日期']] = { call: 0, sl: 0, c: 0 };
+                dateMap[d['日期']].call += d['呼入量'];
+                dateMap[d['日期']].sl += parseFloat(d['服务水平_20s']) || 0;
+                dateMap[d['日期']].c++;
+            });
+            const labels = Object.keys(dateMap).sort();
+            if(trendChartInst) trendChartInst.destroy();
+            trendChartInst = new Chart(document.getElementById('trendChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '当班呼入量', data: labels.map(l => dateMap[l].call), backgroundColor: 'rgba(99, 102, 241, 0.4)', borderRadius: 4, yAxisID: 'y' },
+                        { label: '服务水平 (SL %)', data: labels.map(l => (dateMap[l].sl/dateMap[l].c).toFixed(1)), type: 'line', borderColor: '#10B981', pointBackgroundColor: '#10B981', yAxisID: 'y1', tension: 0.3, borderWidth: 3 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#6B7280' } },
+                        y: { position: 'left', grid: { color: '#1F2937' }, ticks: { color: '#6B7280' } },
+                        y1: { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { color: '#6B7280' } }
+                    },
+                    plugins: { legend: { labels: { color: '#9CA3AF' } } }
+                }
+            });
+
+            // 4. 下方细分数据表格明细生成
+            const teamStats = {};
+            filteredData.forEach(d => {
+                const t = d['客服班组'];
+                if(!teamStats[t]) teamStats[t] = { call: 0, ans: 0, sl: 0, aht: 0, csat: 0, count: 0 };
+                teamStats[t].call += d['呼入量'];
+                teamStats[t].ans += d['人工接听量'];
+                teamStats[t].sl += parseFloat(d['服务水平_20s']) || 0;
+                teamStats[t].aht += d['平均处理时长_秒'];
+                teamStats[t].csat += parseFloat(d['客户满意度']) || 0;
+                teamStats[t].count++;
+            });
+            const tableHTML = Object.keys(teamStats).map(t => {
+                const s = teamStats[t];
+                const ar = (s.ans / s.call * 100).toFixed(1);
+                const sl = (s.sl / s.count).toFixed(1);
+                const csat = (s.csat / s.count).toFixed(1);
+                return `
+                    <tr class="hover:bg-gray-800/30 transition-colors">
+                        <td class="px-6 py-4 font-medium text-white">${t}</td>
+                        <td class="px-6 py-4 text-center text-gray-400">${s.call.toLocaleString()}</td>
+                        <td class="px-6 py-4 text-center ${ar < 85 ? 'text-red-400 font-semibold' : 'text-gray-300'}">${ar}%</td>
+                        <td class="px-6 py-4 text-center ${sl < 70 ? 'text-red-400 font-semibold' : 'text-gray-300'}">${sl}%</td>
+                        <td class="px-6 py-4 text-center text-gray-300">${Math.round(s.aht/s.count)}s</td>
+                        <td class="px-6 py-4 text-center font-semibold text-indigo-400">${csat}%</td>
+                    </tr>
+                `;
+            }).join('');
+            document.getElementById('dataTableBody').innerHTML = tableHTML;
+        }
+
+        function clearUIDisplay() {
+            document.getElementById('kpiCallIn').innerText = '--';
+            document.getElementById('kpiAnswerRate').innerText = '--';
+            document.getElementById('kpiAHT').innerText = '--';
+            document.getElementById('kpiSL').innerText = '--';
+            document.getElementById('arProgress').style.width = '0%';
+            document.getElementById('slAlertText').innerText = '';
+            document.getElementById('dataTableBody').innerHTML = '';
+            if(lobChartInst) lobChartInst.destroy();
+            if(trendChartInst) trendChartInst.destroy();
+        }
+
+        function resetData() {
+            rawData = [];
+            clearUIDisplay();
+            alert("看板数据已成功全盘清空！您可以当面演示点击‘导入生产数据’按钮。");
+        }
+
+        // 文件导入监听
+        document.getElementById('csvFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                rawData = parseCSV(evt.target.result);
+                document.getElementById('teamFilter').value = "全部";
+                renderDashboard();
+                alert("✨ 外部生产数据同步成功！SL 智能报警器已就绪。");
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        document.getElementById('teamFilter').addEventListener('change', (e) => renderDashboard(e.target.value));
+
+        // 页面首次打开时，自动装载内置假数据，确保开箱即用
+        rawData = parseCSV(defaultCSVData);
+        renderDashboard();
+    </script>
+</body>
+</html>
