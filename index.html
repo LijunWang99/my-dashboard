@@ -432,4 +432,55 @@
                         <td class="px-6 py-4 text-center ${ar < 85 ? 'text-red-400' : 'text-gray-300'}">${ar}%</td>
                         <td class="px-6 py-4 text-center ${sl < 70 ? 'text-red-400' : 'text-gray-300'}">${sl}%</td>
                         <td class="px-6 py-4 text-center text-amber-400 font-semibold">${Math.round(s.aht/s.count)}s</td>
-                        <td class="px-6 py-4 text-center font-bold ${csat
+                        <td class="px-6 py-4 text-center font-bold ${csat < 85 ? 'text-amber-400' : 'text-emerald-400'}">${csat}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function clearUIDisplay() {
+            document.getElementById('kpiCallIn').innerText = '--';
+            document.getElementById('kpiAHT').innerText = '--';
+            document.getElementById('kpiCSAT').innerText = '--';
+            document.getElementById('kpiSL').innerText = '--';
+            document.getElementById('slAlertText').innerText = '';
+            document.getElementById('dataTableBody').innerHTML = '';
+            if(teamCsatChartInst) teamCsatChartInst.destroy();
+            if(teamAhtChartInst) teamAhtChartInst.destroy();
+            if(trendChartInst) trendChartInst.destroy();
+            if(miniTrendChartInst) miniTrendChartInst.destroy();
+            if(miniAHTChartInst) miniAHTChartInst.destroy();
+            if(miniCSATChartInst) miniCSATChartInst.destroy();
+            if(miniSLChartInst) miniSLChartInst.destroy();
+        }
+
+        function resetData() { rawData = []; clearUIDisplay(); alert("大屏数据已全盘清空！"); }
+        function exportImage() {
+            html2canvas(document.body, { scale: 2, useCORS: true, backgroundColor: '#0B0F19' }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `Mini趋势大屏看板_${new Date().toLocaleDateString()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+
+        document.getElementById('csvFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                rawData = parseCSV(evt.target.result);
+                document.getElementById('teamFilter').value = "全部";
+                renderDashboard();
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        document.getElementById('teamFilter').addEventListener('change', (e) => renderDashboard(e.target.value));
+
+        // 默认数据流启动初始化加载
+        rawData = parseCSV(defaultCSVData);
+        renderDashboard();
+    </script>
+</body>
+</html>
