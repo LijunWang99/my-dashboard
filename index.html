@@ -36,9 +36,9 @@
             <p class="text-sm text-gray-400">基于 AI 调教的业务自动化工具 · KPI 嵌入式 Mini 趋势线动态追踪载入</p>
         </div>
         <div class="flex items-center gap-3">
-            <button onclick="exportImage()" class="text-gray-400 hover:text-white text-xs px-3 py-2 border border-gray-700 rounded-lg transition-all">导出图片</button>
-            <button onclick="resetData()" class="text-gray-400 hover:text-white text-xs px-3 py-2 border border-gray-700 rounded-lg transition-all">重置清空</button>
-            <select id="teamFilter" class="bg-[#111827] border border-gray-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-indigo-500">
+            <button onclick="exportImage()" class="text-gray-400 hover:text-white text-xs px-3 py-2 border border-gray-700 rounded-lg transition-all cursor-pointer">导出图片</button>
+            <button onclick="resetData()" class="text-gray-400 hover:text-white text-xs px-3 py-2 border border-gray-700 rounded-lg transition-all cursor-pointer">重置清空</button>
+            <select id="teamFilter" class="bg-[#111827] border border-gray-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
                 <option value="全部">所有业务线 (LOB 全选)</option>
                 <optgroup label="iOS 路由队列">
                     <option value="iOS T1 Queue">iOS T1 Queue</option>
@@ -169,7 +169,6 @@
     <script>
         let rawData = [];
         let teamCsatChartInst = null, teamAhtChartInst = null, trendChartInst = null;
-        // 四大 Mini 趋势线实例控制容器
         let miniTrendChartInst = null, miniAHTChartInst = null, miniCSATChartInst = null, miniSLChartInst = null;
         let currentFilter = "全部";
 
@@ -202,7 +201,7 @@
 2026-06-07,iOS T2 Queue,310,308,98.0%,370,95.5%
 2026-06-07,MSS T1 Queue,980,960,90.2%,220,86.0%
 2026-06-07,MSS T2 Queue,190,188,98.5%,430,97.0%
-2026-06-07,Mac re T1 Queue,620,612,95.0%,185,92.0%
+2026-06-07,Mac T1 Queue,620,612,95.0%,185,92.0%
 2026-06-07,Mac T2 Queue,140,139,99.0%,450,97.2%
 2026-06-08,iOS T1 Queue,2800,2400,72.5%,210,85.5%
 2026-06-08,iOS T2 Queue,650,630,92.0%,450,91.0%
@@ -217,7 +216,6 @@
 2026-06-09,Mac T1 Queue,1450,1350,78.5%,245,86.0%
 2026-06-09,Mac T2 Queue,310,302,93.8%,565,93.1%`;
 
-        // 统一微型 Sparkline 样式配置配置函数
         function createSparklineConfig(labels, data, color, fillColor) {
             return {
                 type: 'line',
@@ -271,33 +269,27 @@
                 return;
             }
 
-            // 1. KPI 大盘底层计算
             const totalCallIn = filteredData.reduce((sum, d) => sum + d['呼入量'], 0);
             const avgAHT = filteredData.reduce((sum, d) => sum + d['平均处理时长_秒'], 0) / filteredData.length;
             const avgSL = filteredData.reduce((sum, d) => sum + (parseFloat(d['服务水平_20s']) || 0), 0) / filteredData.length;
             const avgCSAT = filteredData.reduce((sum, d) => sum + (parseFloat(d['客户满意度']) || 0), 0) / filteredData.length;
 
-            // 填充总呼入量
             document.getElementById('kpiCallIn').innerText = totalCallIn.toLocaleString();
 
-            // 填充AHT (替换原有接听率栏目)
             document.getElementById('kpiAHT').innerText = Math.round(avgAHT) + 's';
             document.getElementById('ahtStatus').innerHTML = avgAHT > 360 ? '⚠️ 超出基准' : '✓ 高效';
             document.getElementById('ahtStatus').className = avgAHT > 360 ? 'text-[10px] px-1.5 py-0.5 rounded bg-red-900/40 text-red-400' : 'text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400';
 
-            // 填充CSAT
             document.getElementById('kpiCSAT').innerText = avgCSAT.toFixed(1) + '%';
             document.getElementById('csatStatus').innerHTML = avgCSAT < 85 ? '🚨 质检预警' : '✓ 极佳';
             document.getElementById('csatStatus').className = avgCSAT < 85 ? 'text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-400' : 'text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400';
 
-            // 填充SL
             const slEl = document.getElementById('kpiSL');
             slEl.innerText = avgSL.toFixed(1) + '%';
             document.getElementById('slAlertText').innerText = avgSL < 75 ? '‼️ 触发自动报警：大盘整体 SL 偏低' : '标准设定: 70% · 大盘整体运行平稳';
             document.getElementById('slAlertText').className = avgSL < 75 ? 'text-[10px] mt-2 text-red-500 font-bold' : 'text-[10px] mt-2 text-emerald-500 opacity-80';
             slEl.className = avgSL < 75 ? 'text-3xl font-bold tracking-tight alert-flash text-red-500' : 'text-3xl font-bold tracking-tight text-white';
 
-            // 2. 提取并计算 7天 Mini 趋势线所需的日期维度数据排布
             const dates = [...new Set(rawData.map(d => d['日期']))].sort();
             
             const timelineMap = {};
@@ -316,7 +308,6 @@
             const miniCSATValues = miniLabels.map(l => timelineMap[l].csat / timelineMap[l].count);
             const miniSLValues = miniLabels.map(l => timelineMap[l].sl / timelineMap[l].count);
 
-            // 【核心重构】刷新渲染四大卡片自带的 Mini 趋势图
             if(miniTrendChartInst) miniTrendChartInst.destroy();
             miniTrendChartInst = new Chart(document.getElementById('miniTrendChart'), createSparklineConfig(miniLabels, miniCallValues, '#6366F1', 'rgba(99, 102, 241, 0.08)'));
 
@@ -329,8 +320,6 @@
             if(miniSLChartInst) miniSLChartInst.destroy();
             miniSLChartInst = new Chart(document.getElementById('miniSLChart'), createSparklineConfig(miniLabels, miniSLValues, '#3B82F6', 'rgba(59, 130, 246, 0.08)'));
 
-
-            // 3. 渲染左右两张主核心趋势大图表
             const activeTeams = (filterTeam === "全部") ? Object.keys(teamColors) : [filterTeam];
             const csatDatasets = [];
             const ahtDatasets = [];
@@ -386,7 +375,6 @@
                 }
             });
 
-            // 底部联动混合柱状图
             if(trendChartInst) trendChartInst.destroy();
             trendChartInst = new Chart(document.getElementById('trendChart'), {
                 type: 'bar',
@@ -408,7 +396,6 @@
                 }
             });
 
-            // 4. 明细数据明细表刷新
             const teamStats = {};
             filteredData.forEach(d => {
                 const t = d['Queue Type'];
@@ -455,12 +442,28 @@
         }
 
         function resetData() { rawData = []; clearUIDisplay(); alert("大屏数据已全盘清空！"); }
+        
+        // 【深度重构】全新图片导出模块，全面适配本地 file 协议，防止跨域卡死
         function exportImage() {
-            html2canvas(document.body, { scale: 2, useCORS: true, backgroundColor: '#0B0F19' }).then(canvas => {
+            if (typeof html2canvas === 'undefined') {
+                alert("网页导出插件尚未加载完毕，请确认已联网或刷新重试！");
+                return;
+            }
+            
+            // 使用更宽松的安全配置，防止 file:// 协议沙箱拦截
+            html2canvas(document.body, { 
+                scale: 2, 
+                useCORS: false,          // 本地 file 协议下优先关闭 CORS 检测
+                allowTaint: true,        // 允许读取受污染的 Canvas
+                backgroundColor: '#0B0F19' 
+            }).then(canvas => {
                 const link = document.createElement('a');
                 link.download = `Mini趋势大屏看板_${new Date().toLocaleDateString()}.png`;
                 link.href = canvas.toDataURL('image/png');
                 link.click();
+            }).catch(err => {
+                console.error("html2canvas 渲染失败:", err);
+                alert("图片导出失败！由于浏览器本地安全限制（File协议限制），请尝试使用 VS Code Live Server 插件打开，或者在控制台(F12)查看具体报错。");
             });
         }
 
@@ -478,7 +481,6 @@
 
         document.getElementById('teamFilter').addEventListener('change', (e) => renderDashboard(e.target.value));
 
-        // 默认数据流启动初始化加载
         rawData = parseCSV(defaultCSVData);
         renderDashboard();
     </script>
